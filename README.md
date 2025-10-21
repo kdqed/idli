@@ -1,11 +1,23 @@
-# Coming Soon: An Opinionated ORM For Python Apps 
+# Coming Soon: An SQL ORM For Python That Treats You Like Its 2025
 
-Alchemy is complex. But Idli is simple, have some Idli.
+Alchemy is complex, but Idli is simple.
+
+## Have Some Idli
+
+(Doesn't work yet)
+
+```bash
+$ pip install idli
+```
+
+```bash
+$ uv add idli
+```
 
 ## Goals
 
-- Act as a simple data layer for simple Python apps (typical CRUD apps).
-- Primarily support solo devs and small teams shipping small to medium scale applications typically running on a single VPS.
+- Act as a simple data persistence & query layer for simple Python apps (typical CRUD apps).
+- Primarily support solo devs and small teams who iterate fast. Not intended for those who need 4 approvals to create a new column.
 - Be as declarative as possible.
 - Keep your data layer code minimal and elegant.
 - Manage as much database administration as possible within the application.
@@ -27,11 +39,11 @@ db = connect('postgresql://user:pwd@localhost/somedb')
 
 @db.Model
 class Task:
-    id: uuid = uuid.uuid7() # initialize with function value
+    id: uuid.UUID = uuid.uuid7 # initialize with function value
     title: str
     description: str | None # nullable column because None is an allowed type
     status: str = 'todo' #  initialize with default value as 'todo'
-    created: datetime = datetime.now()
+    created: datetime = datetime.now
     updated: datetime | None
 
 
@@ -75,11 +87,11 @@ db = connect(
 
 @db.Model
 class Task:
-    id: uuid = uuid.uuid7() # initialize with function value
+    id: uuid.UUID = uuid.uuid7 # initialize with function value
     title: str
     description: str | None # nullable column because None is an allowed type
     status: str = 'todo' #  initialize with default value as 'todo'
-    created: datetime = datetime.now()
+    created: datetime = datetime.now
     updated: datetime | None
     owner: User # newly created column referencing another table
 
@@ -120,11 +132,11 @@ db = async_connect('postgresql://user:pwd@localhost/somedb')
 
 @db.Model
 class Task:
-    id: uuid = uuid.uuid7() # initialize with function value
+    id: uuid.UUID = uuid.uuid7 # initialize with function value
     title: str
     description: str | None # nullable column because None is an allowed type
     status: str = 'todo' #  initialize with default value as 'todo'
-    created: datetime = datetime.now()
+    created: datetime = datetime.now
     updated: datetime | None
 
 
