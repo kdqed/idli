@@ -9,6 +9,7 @@ from psycopg.sql import Identifier, Literal, SQL
 from psycopg_pool import ConnectionPool
 
 from idli.errors import TableNotFoundError
+from idli.helpers import *
 from idli.internal import Column, Table
 
 
@@ -22,7 +23,6 @@ class Connection:
 
         self.load_tables()
         self.load_columns()
-        print(self.__db_tables__)
         
 
     def raw_sql(self, *args):
@@ -103,18 +103,24 @@ class Connection:
 
     def _reconcile_columns(self, cls):
         for column in cls.__table__.columns.values():
+            column_type = column.column_type
+            default = column.default
+            if default == AutoInt and column_type == 'INTEGER':
+                column_type = 'SERIAL'
+                default = None
+                
             stmt = [
                 SQL('ALTER TABLE {}').format(Identifier(cls.__table__.name)),
                 SQL('ADD COLUMN IF NOT EXISTS {} {}').format(
                     Identifier(column.name),
-                    SQL(column.column_type),
+                    SQL(column_type),
                 ),
             ]
             
             if column.nullable == False:
                 stmt.append(SQL('NOT NULL'))
                 
-            if column.default != None:
+            if default != None:
                 stmt.append(SQL('DEFAULT {}').format(Literal(column.default)))
 
             if column.primary_key:

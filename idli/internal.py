@@ -1,23 +1,25 @@
+from datetime import datetime
 from uuid import UUID
 
-from idli.coltypes import *
 from idli.errors import InvalidColumnTypeError
 
 
 PY_TYPES = {
-    UUID: 'UUID',
     bool: 'BOOLEAN',
-    float: 'NUMERIC',
     int: 'INTEGER',
+    float: 'NUMERIC',
+    datetime: 'TIMESTAMP',
+    UUID: 'UUID',
     str: 'VARCHAR',
 }
 
 DB_TYPES = {
-    'integer': 'INTEGER',
-    'character varying': 'VARCHAR',
     'boolean': 'BOOLEAN',
+    'integer': 'INTEGER',
     'numeric': 'NUMERIC',
-    'uuid': 'UUID'
+    'timestamp without time zone': 'TIMESTAMP',
+    'uuid': 'UUID',
+    'character varying': 'VARCHAR',
 }
 
 
