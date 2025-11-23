@@ -1,4 +1,4 @@
-# Coming Soon: An SQL ORM For Python That Treats You Like Its 2025
+# Coming Soon: A Python ORM That Treats You Like Its 2025
 
 Alchemy is complex, but Idli is simple.
 
