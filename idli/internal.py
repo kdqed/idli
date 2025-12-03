@@ -1,8 +1,6 @@
 from datetime import datetime
 from uuid import UUID
 
-from psycopg.sql import Identifier, Literal, SQL
-
 from idli.errors import InvalidColumnTypeError
 from idli.helpers import *
 
@@ -97,12 +95,16 @@ class Column:
                         column_default += '.000000'
                     column_default = datetime.strptime(column_default, DATE_FMT)
                 except Exception as e:
+                    print(e)
                     pass      
             elif column_type=="UUID":
-                try:
-                    column_default = UUID(column_default.rsplit('::uuid', 1)[0].strip("'"))
-                except Exception as e:
-                    pass            
+                if column_default == 'uuidv7()':
+                    column_default = AutoUUID
+                else:
+                    try:
+                        column_default = UUID(column_default.rsplit('::uuid', 1)[0].strip("'"))
+                    except Exception as e:
+                        pass            
             elif column_type=='VARCHAR':
                 column_default = column_default.rsplit('::character varying', 1)[0].strip("'")
 
@@ -118,60 +120,6 @@ class Column:
 
     def __repr__(self):
         return f'Column<{self.column_type}> {self.name}'
-
-
-    def generate_sql_for_addition(self):
-        column_type = self.column_type
-        default = self.default
-        if default == AutoInt and column_type == 'INTEGER':
-            column_type = 'SERIAL'
-            default = None
-            
-        stmt = [
-            SQL('ALTER TABLE {}').format(Identifier(self.table_name)),
-            SQL('ADD COLUMN IF NOT EXISTS {} {}').format(
-                Identifier(self.name),
-                SQL(column_type),
-            ),
-        ]
-        
-        if self.nullable == False:
-            stmt.append(SQL('NOT NULL'))
-            
-        if default != None:
-            if self.column_type == 'TIMESTAMP':
-                default_str = self.default.strftime(DATE_FMT)
-            else:
-                default_str = str(self.default)
-            stmt.append(SQL('DEFAULT {}').format(Literal(default_str)))
-
-        return SQL(' ').join(stmt)
-
-
-    def generate_sql_for_make_nullable(self):
-        return SQL('ALTER TABLE {} ALTER COLUMN {} DROP NOT NULL').format(
-            Identifier(self.table_name),
-            Identifier(self.name),
-        )
-
-
-    def generate_sql_for_set_default(self):
-        if self.default != None:
-            if self.column_type == 'TIMESTAMP':
-                default_str = self.default.strftime(DATE_FMT)
-            else:
-                default_str = str(self.default)
-            
-            return SQL('ALTER TABLE {} ALTER COLUMN {} SET DEFAULT {}').format(
-                Identifier(self.table_name),
-                Identifier(self.name),
-                Literal(default_str),
-            )
-        else:
-            return SQL('ALTER TABLE {} ALTER COLUMN {} DROP DEFAULT').format(
-                Identifier(self.table_name),
-                Identifier(self.name),
-            )
 
 
 class Table:
