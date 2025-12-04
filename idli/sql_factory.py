@@ -65,15 +65,13 @@ def drop_constraint(table_name: str, constraint_name: str):
     ''').format(Identifier(table_name), Identifier(constraint_name))
 
 
-def get_primary_key_columns(table_name: str):
+def get_primary_key_columns(constraint_name: str):
     return SQL('''
-        SELECT c.column_name
-        FROM information_schema.table_constraints tc 
-        JOIN information_schema.constraint_column_usage AS ccu USING (constraint_schema, constraint_name) 
-        JOIN information_schema.columns AS c ON c.table_schema = tc.constraint_schema
-            AND tc.table_name = c.table_name AND ccu.column_name = c.column_name
-        WHERE constraint_type = 'PRIMARY KEY' AND tc.table_name = {};
-    ''').format(Literal(table_name))
+        SELECT column_name 
+        FROM information_schema.key_column_usage 
+        WHERE constraint_schema = 'public' AND constraint_name = {}
+        ORDER BY ordinal_position;
+    ''').format(Literal(constraint_name))
 
 
 def get_primary_key_constraint_name(table_name: str):
@@ -82,6 +80,23 @@ def get_primary_key_constraint_name(table_name: str):
         FROM information_schema.table_constraints
         WHERE constraint_type = 'PRIMARY KEY' AND table_name = {};
     ''').format(Literal(table_name))
+
+
+def insert_row(table_name: str, columns: List[str], values: List[str]):
+    return SQL(' ').join([
+        SQL('INSERT INTO {}').format(Identifier(table_name)),
+        SQL('').join([
+            SQL('('),
+            SQL(', ').join([Identifier(c) for c in columns]),
+            SQL(')'),
+        ]),
+        SQL('VALUES'),
+        SQL('').join([
+            SQL('('),
+            SQL(', ').join([Literal(v) for v in values]),
+            SQL(')'),
+        ]),
+    ])
 
 
 def list_columns():

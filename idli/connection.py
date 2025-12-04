@@ -7,10 +7,12 @@ import psycopg
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
+from idli import model_methods
+from idli import sql_factory
 from idli.errors import *
 from idli.helpers import *
 from idli.internal import Column, Table
-from idli import sql_factory
+
 
 
 class Connection:
@@ -26,6 +28,7 @@ class Connection:
         
 
     def exec_sql(self, *args):
+        print(args)
         with self._pool.connection() as conn:
             return conn.execute(*args)
             
@@ -65,13 +68,21 @@ class Connection:
                 continue
                 
             col_name = key
-            if getattr(val, '__origin__', None) in [Optional, Union]:
-                col_class = list(filter(lambda x: type(x) is not None, get_args(val)))[0]
-                nullable = True
+            type_args = get_args(val)
+            if type_args:
+                if len(type_args)==1:
+                    col_class = type_args[0]
+                    nullable = False
+                elif len(type_args)==2 and type_args[0] is type(None):
+                    col_class = type_args[1]
+                    nullable = True
+                elif len(type_args)==2 and type_args[1] is type(None):
+                    col_class = type_args[0]
+                    nullable = True    
             else:
                 col_class = val
                 nullable = False
-
+            
             default = getattr(cls, key, None)
                 
             cls.__table__.add_column(Column.from_py_model(
@@ -122,9 +133,22 @@ class Connection:
 
     def _reconcile_primary_key(self, cls):
         defined_pk_columns = getattr(cls, '__primary_key__', ['id'])
-        
+
+        constraint = self.exec_sql_to_dict_rows(
+            sql_factory.get_primary_key_constraint_name(cls.__table__.name),
+        ).fetchall()
+
+        if len(constraint) == 0:
+            self.exec_sql(sql_factory.create_primary_key(
+                table_name = cls.__table__.name,
+                columns = defined_pk_columns,
+            ))
+            return
+
+        constraint_name = constraint[0]['constraint_name']
+            
         result = self.exec_sql_to_dict_rows(
-            sql_factory.get_primary_key_columns(cls.__table__.name)
+            sql_factory.get_primary_key_columns(constraint_name)
         ).fetchall()
         existing_pk_columns = [c['column_name'] for c in result]
 
@@ -137,16 +161,7 @@ class Connection:
                     reconciliation_required = True
                     break
                     
-        if len(existing_pk_columns) == 0 and reconciliation_required:        
-            self.exec_sql(sql_factory.create_primary_key(
-                table_name = cls.__table__.name,
-                columns = defined_pk_columns,
-            ))
-        elif reconciliation_required:
-            constraint_name = self.exec_sql_to_dict_rows(
-                sql_factory.get_primary_key_constraint_name(cls.__table__.name),
-            ).fetchall()[0]['constraint_name']
-            
+        if reconciliation_required:    
             self.exec_sql(sql_factory.drop_constraint(
                 table_name = cls.__table__.name,
                 constraint_name = constraint_name,
@@ -168,3 +183,9 @@ class Connection:
         self._reconcile_columns(cls)
         self._handle_directives(cls)
         self._reconcile_primary_key(cls)
+
+        cls._connection = self
+        cls.__init__ = model_methods.__init__
+        cls.save = model_methods.save
+
+        return cls

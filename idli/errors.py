@@ -16,6 +16,9 @@ class ColumnTypeMismatchError(Exception):
 class InvalidColumnTypeError(Exception):
     pass
 
+class InvalidValueTypeError(Exception):
+    pass
+
 class TableNotFoundError(Exception):
     pass
 

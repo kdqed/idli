@@ -4,20 +4,61 @@ from uuid import UUID
 from idli.errors import InvalidColumnTypeError
 from idli.helpers import *
 
-COLUMN_TYPES = [
-    # (PYTHON CLASS TYPE, key, PG INFO SCHEMA TYPE)
-    (bool, 'BOOLEAN', 'boolean'),
-    (datetime, 'TIMESTAMP', 'timestamp without time zone'),
-    (float, 'NUMERIC', 'numeric'),
-    (int, 'INTEGER', 'integer'),
-    (str, 'VARCHAR', 'character varying'),
-    (UUID, 'UUID', 'uuid'),
-]
-
-PY_COLUMN_TYPES = { t[0]: t[1] for t in COLUMN_TYPES }
-DB_COLUMN_TYPES = { t[2]: t[1] for t in COLUMN_TYPES }
 
 DATE_FMT = "%Y-%m-%d %H:%M:%S.%f"
+
+
+class ColumnType:
+
+    def __init__(self, py_type, db_type, py_to_db, db_to_py):
+        self.py_type = py_type
+        self.db_type = db_type
+        self.py_to_db = py_to_db
+        self.db_to_py = db_to_py
+
+    
+COLUMN_TYPES = {
+    'BOOLEAN': ColumnType(
+        py_type = bool,
+        db_type = 'boolean',
+        py_to_db = lambda x: str(x),
+        db_to_py = lambda x: x.lower()=='true',
+    ),
+    'TIMESTAMP': ColumnType(
+        py_type = datetime,
+        db_type = 'timestamp without time zone',
+        py_to_db = lambda x: x.strftime(DATE_FMT),
+        db_to_py = lambda x: datetime.strptime(x, DATE_FMT),
+    ),
+    'NUMERIC': ColumnType(
+        py_type = float,
+        db_type = 'numeric',
+        py_to_db = lambda x: str(x),
+        db_to_py = lambda x: float(x),
+    ),
+    'INTEGER': ColumnType(
+        py_type = int,
+        db_type = 'integer',
+        py_to_db = lambda x: str(x),
+        db_to_py = lambda x: int(x),
+    ),
+    'VARCHAR': ColumnType(
+        py_type = str,
+        db_type = 'character varying',
+        py_to_db = lambda x: x,
+        db_to_py = lambda x: x,
+    ),
+    'UUID': ColumnType(
+        py_type = UUID,
+        db_type = 'uuid',
+        py_to_db = lambda x: str(x),
+        db_to_py = lambda x: UUID(x),
+    ),
+}
+
+PY_COLUMN_TYPES = { COLUMN_TYPES[key].py_type: key for key in COLUMN_TYPES }
+DB_COLUMN_TYPES = { COLUMN_TYPES[key].db_type: key for key in COLUMN_TYPES }
+
 
 
 class Column:
@@ -120,6 +161,10 @@ class Column:
 
     def __repr__(self):
         return f'Column<{self.column_type}> {self.name}'
+
+
+    def py_to_db(self, val):
+        return COLUMN_TYPES[self.column_type].py_to_db(val)
 
 
 class Table:
