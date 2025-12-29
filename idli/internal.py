@@ -1,6 +1,9 @@
+import copy
 from datetime import datetime
+from typing import List
 from uuid import UUID
 
+from idli import sql_factory
 from idli.errors import InvalidColumnTypeError
 from idli.helpers import *
 
@@ -10,11 +13,12 @@ DATE_FMT = "%Y-%m-%d %H:%M:%S.%f"
 
 class ColumnType:
 
-    def __init__(self, py_type, db_type, py_to_db, db_to_py):
+    def __init__(self, py_type, db_type, py_to_db, db_to_py, db_val_to_py_val):
         self.py_type = py_type
         self.db_type = db_type
         self.py_to_db = py_to_db
         self.db_to_py = db_to_py
+        self.db_val_to_py_val = db_val_to_py_val
 
     
 COLUMN_TYPES = {
@@ -23,36 +27,42 @@ COLUMN_TYPES = {
         db_type = 'boolean',
         py_to_db = lambda x: str(x),
         db_to_py = lambda x: x.lower()=='true',
+        db_val_to_py_val = lambda x: x,
     ),
     'TIMESTAMP': ColumnType(
         py_type = datetime,
         db_type = 'timestamp without time zone',
         py_to_db = lambda x: x.strftime(DATE_FMT),
         db_to_py = lambda x: datetime.strptime(x, DATE_FMT),
+        db_val_to_py_val = lambda x: x,
     ),
     'NUMERIC': ColumnType(
         py_type = float,
         db_type = 'numeric',
         py_to_db = lambda x: str(x),
         db_to_py = lambda x: float(x),
+        db_val_to_py_val = lambda x: float(x) if x is not None else None,
     ),
     'INTEGER': ColumnType(
         py_type = int,
         db_type = 'integer',
         py_to_db = lambda x: str(x),
         db_to_py = lambda x: int(x),
+        db_val_to_py_val = lambda x: x,
     ),
     'VARCHAR': ColumnType(
         py_type = str,
         db_type = 'character varying',
         py_to_db = lambda x: x,
         db_to_py = lambda x: x,
+        db_val_to_py_val = lambda x: x,
     ),
     'UUID': ColumnType(
         py_type = UUID,
         db_type = 'uuid',
         py_to_db = lambda x: str(x),
         db_to_py = lambda x: UUID(x),
+        db_val_to_py_val = lambda x: x,
     ),
 }
 
@@ -167,18 +177,75 @@ class Column:
         return COLUMN_TYPES[self.column_type].py_to_db(val)
 
 
+    def db_val_to_py_val(self, db_val):
+        return COLUMN_TYPES[self.column_type].db_val_to_py_val(db_val)
+
+
+
+class QuerySet:
+
+    def __init__(
+        self, 
+        cls, 
+        limit: int | None = None,
+        skip: int | None = None,
+        order_by: List | None = None,
+    ):
+        self._cls = cls
+        self._cursor = None
+        self._limit = limit
+        self._skip = skip
+        self._order_by = order_by
+
+
+    def __iter__(self):
+        self._cursor = self._cls._connection.exec_sql_to_dict_rows(
+            sql_factory.query_rows(
+                table_name = self._cls.__table__.name,
+                limit = self._limit,
+                skip = self._skip,
+                order_by = self._order_by,
+            )
+        )
+        for row in self._cursor:
+            yield self._cls._obj_from_dict(row)
+    
+
+    def __getitem__(self, key):
+        if isinstance(key, slice):
+            new_qs = copy.copy(self)
+            if (key.start is not None) and (key.stop is not None):
+                new_qs._limit = key.stop - key.start
+                new_qs._skip = key.start
+            elif key.start is not None:
+                new_qs._limit = None
+                new_qs._skip = key.start
+            elif key.stop is not None:
+                new_qs._limit = key.stop
+                new_qs._skip = None
+            return new_qs
+
+
+    def order_by(self, *args):
+        new_qs = copy.copy(self)
+        if len(args)>0:
+            new_qs._order_by = args
+        return new_qs
+
+
 class Table:
 
     def __init__(self, name: str):
         self.name = name
         self.columns = {}
+    
 
     def __repr__(self):
         return f"Table {self.name}: {', '.join(self.columns.keys())}"
+    
 
     def add_column(self, column: Column):
         self.columns[column.name] = column
     
-
 
 

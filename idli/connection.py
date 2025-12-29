@@ -14,7 +14,6 @@ from idli.helpers import *
 from idli.internal import Column, Table
 
 
-
 class Connection:
 
     def __init__(self, db_uri: str, sambar_dip: bool=False):
@@ -28,7 +27,6 @@ class Connection:
         
 
     def exec_sql(self, *args):
-        print(args)
         with self._pool.connection() as conn:
             return conn.execute(*args)
             
@@ -171,7 +169,7 @@ class Connection:
                 table_name = cls.__table__.name,
                 columns = defined_pk_columns,
             ))
-
+    
     
     def Model(self, cls):
         s1 = re.sub('(.)([A-Z][a-z]+)', r'\1_\2', cls.__name__)
@@ -188,4 +186,7 @@ class Connection:
         cls.__init__ = model_methods.__init__
         cls.save = model_methods.save
 
+        cls.select = classmethod(model_methods.select)
+        cls._obj_from_dict = classmethod(model_methods._obj_from_dict)
+        
         return cls

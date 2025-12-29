@@ -123,6 +123,35 @@ def make_column_nullable(column: Column):
     )
 
 
+def query_rows(
+        table_name: str,
+        limit: int | None = None,
+        skip: int | None = None,
+        order_by: List | None = None,
+    ):
+    
+    stmt = [SQL('SELECT * FROM {}').format(
+        Identifier(table_name),
+    )]
+    
+    if order_by is not None:
+        ordering_bits = []
+        for col_name in order_by:
+            if col_name.startswith('-'):
+                ordering_bits.append(SQL('{} DESC').format(Identifier(col_name[1:])))
+            else:
+                ordering_bits.append(Identifier(col_name))
+        stmt.append(SQL('ORDER BY ') + SQL(',').join(ordering_bits))
+
+    if limit is not None:
+        stmt.append(SQL('LIMIT {}').format(Literal(limit)))
+    
+    if skip is not None:
+        stmt.append(SQL('OFFSET {}').format(Literal(skip)))
+        
+    return SQL(' ').join(stmt)
+
+
 def set_default_column_value(column: Column):
     if column.default != None:
         if column.default == AutoUUID:

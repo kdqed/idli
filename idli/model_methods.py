@@ -1,7 +1,7 @@
 from idli import sql_factory
 from idli.errors import InvalidValueTypeError
 from idli.helpers import AutoInt, AutoUUID
-from idli.internal import PY_COLUMN_TYPES
+from idli.internal import PY_COLUMN_TYPES, QuerySet
 
 
 def __init__(self, **kwargs):
@@ -32,4 +32,20 @@ def save(self):
         columns = columns,
         values = values,
     ))
+
+
+def select(cls):
+    return QuerySet(cls)
+
+
+def _obj_from_dict(cls, row_dict):
+    obj = cls()
+    for column_name in cls.__table__.columns:
+        column = cls.__table__.columns[column_name]
+        value = column.db_val_to_py_val(
+            row_dict.get(column_name)
+        )    
+        setattr(obj, column_name, value)
+    return obj
+
                 
