@@ -25,42 +25,42 @@ COLUMN_TYPES = {
     'BOOLEAN': ColumnType(
         py_type = bool,
         db_type = 'boolean',
-        py_to_db = lambda x: str(x),
+        py_to_db = lambda x: str(x) if x is not None else None,
         db_to_py = lambda x: x.lower()=='true',
         db_val_to_py_val = lambda x: x,
     ),
     'TIMESTAMP': ColumnType(
         py_type = datetime,
         db_type = 'timestamp without time zone',
-        py_to_db = lambda x: x.strftime(DATE_FMT),
+        py_to_db = lambda x: x.strftime(DATE_FMT) if x is not None else None,
         db_to_py = lambda x: datetime.strptime(x, DATE_FMT),
         db_val_to_py_val = lambda x: x,
     ),
     'NUMERIC': ColumnType(
         py_type = float,
         db_type = 'numeric',
-        py_to_db = lambda x: str(x),
+        py_to_db = lambda x: str(x) if x is not None else None,
         db_to_py = lambda x: float(x),
         db_val_to_py_val = lambda x: float(x) if x is not None else None,
     ),
     'INTEGER': ColumnType(
         py_type = int,
         db_type = 'integer',
-        py_to_db = lambda x: str(x),
+        py_to_db = lambda x: str(x) if x is not None else None,
         db_to_py = lambda x: int(x),
         db_val_to_py_val = lambda x: x,
     ),
     'VARCHAR': ColumnType(
         py_type = str,
         db_type = 'character varying',
-        py_to_db = lambda x: x,
+        py_to_db = lambda x: x if x is not None else None,
         db_to_py = lambda x: x,
         db_val_to_py_val = lambda x: x,
     ),
     'UUID': ColumnType(
         py_type = UUID,
         db_type = 'uuid',
-        py_to_db = lambda x: str(x),
+        py_to_db = lambda x: str(x) if x is not None else None,
         db_to_py = lambda x: UUID(x),
         db_val_to_py_val = lambda x: x,
     ),
@@ -187,11 +187,13 @@ class QuerySet:
     def __init__(
         self, 
         cls, 
+        filters: dict | None = None,
         limit: int | None = None,
         skip: int | None = None,
         order_by: List | None = None,
     ):
         self._cls = cls
+        self._filters = filters
         self._cursor = None
         self._limit = limit
         self._skip = skip
@@ -202,6 +204,7 @@ class QuerySet:
         self._cursor = self._cls._connection.exec_sql_to_dict_rows(
             sql_factory.query_rows(
                 table_name = self._cls.__table__.name,
+                filters = self._filters,
                 limit = self._limit,
                 skip = self._skip,
                 order_by = self._order_by,

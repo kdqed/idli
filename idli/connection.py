@@ -123,6 +123,7 @@ class Connection:
 
     def _handle_directives(self, cls):
         directives = getattr(cls, '__idli__', [])
+        cls.__primary_key__ = ['id']
 
         for d in directives:
             if type(d) is PrimaryKey:
@@ -130,7 +131,7 @@ class Connection:
 
 
     def _reconcile_primary_key(self, cls):
-        defined_pk_columns = getattr(cls, '__primary_key__', ['id'])
+        defined_pk_columns = cls.__primary_key__
 
         constraint = self.exec_sql_to_dict_rows(
             sql_factory.get_primary_key_constraint_name(cls.__table__.name),
@@ -185,6 +186,8 @@ class Connection:
         cls._connection = self
         cls.__init__ = model_methods.__init__
         cls.save = model_methods.save
+        cls._save_existing = model_methods._save_existing
+        cls._save_new = model_methods._save_new
 
         cls.select = classmethod(model_methods.select)
         cls._obj_from_dict = classmethod(model_methods._obj_from_dict)

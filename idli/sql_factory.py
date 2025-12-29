@@ -8,6 +8,14 @@ from idli.internal import Column, Table
 
 DATE_FMT = "%Y-%m-%d %H:%M:%S.%f"
 
+OPERATORS = dict(
+    eq = SQL('{} = {}'),
+    gt = SQL('{} > {}'),
+    gte = SQL('{} >= {}'),
+    lt = SQL('{} < {}'),
+    lte = SQL('{} <= {}'),
+    neq = SQL('{} != {}'),
+)
 
 def create_primary_key(table_name: str, columns: List[str]):
     return SQL(' ').join([
@@ -125,6 +133,7 @@ def make_column_nullable(column: Column):
 
 def query_rows(
         table_name: str,
+        filters: dict | None = None,
         limit: int | None = None,
         skip: int | None = None,
         order_by: List | None = None,
@@ -133,6 +142,18 @@ def query_rows(
     stmt = [SQL('SELECT * FROM {}').format(
         Identifier(table_name),
     )]
+
+    if filters is not None:
+        filter_bits = []
+        for key, val in filters.items():
+            if '__' in key:
+                col, op = key.split('__')
+            else:
+                col, op = key, 'eq'
+            
+            filter_bits.append(OPERATORS[op].format(Identifier(col), Literal(val)))
+                
+        stmt.append(SQL('WHERE ') + SQL(' AND ').join(filter_bits))
     
     if order_by is not None:
         ordering_bits = []
@@ -176,3 +197,16 @@ def set_default_column_value(column: Column):
             Identifier(column.name),
         )
 
+
+def update_row(table_name: str, pk_filter: dict, updates: dict):
+    return SQL(' ').join([
+        SQL('UPDATE {}').format(Identifier(table_name)),
+        SQL(' ').join([
+            SQL('SET'),
+            SQL(', ').join([SQL('{} = {}').format(Identifier(c), Literal(v)) for c, v in updates.items()]),
+        ]),
+        SQL(' ').join([
+            SQL('WHERE'),
+            SQL(', ').join([SQL('{} = {}').format(Identifier(c), Literal(v)) for c, v in pk_filter.items()]),
+        ]),
+    ])

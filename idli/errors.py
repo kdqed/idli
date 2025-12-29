@@ -1,3 +1,6 @@
+class CannotBeNoneError(Exception):
+    pass
+    
 class ColumnDefaultMismatchError(Exception):
     pass
 
