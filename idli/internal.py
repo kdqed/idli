@@ -1,11 +1,12 @@
 import copy
 from datetime import datetime
-from typing import List
+from typing import List, Sequence
 from uuid import UUID
 
 from idli import sql_factory
 from idli.errors import InvalidColumnTypeError
 from idli.helpers import *
+from idli.helpers import _BaseVector
 
 
 DATE_FMT = "%Y-%m-%d %H:%M:%S.%f"
@@ -64,6 +65,13 @@ COLUMN_TYPES = {
         db_to_py = lambda x: UUID(x),
         db_val_to_py_val = lambda x: x,
     ),
+    'VECTOR': ColumnType(
+        py_type = _BaseVector,
+        db_type = 'vector',
+        py_to_db = lambda x: list(x) if x is not None else None,
+        db_to_py = lambda x: x,
+        db_val_to_py_val = lambda x: x,
+    ),
 }
 
 PY_COLUMN_TYPES = { COLUMN_TYPES[key].py_type: key for key in COLUMN_TYPES }
@@ -80,12 +88,14 @@ class Column:
         column_type = None,
         nullable: bool = False,
         default = None,
+        length = None, # Only for vector
     ):
         self.table_name = table_name
         self.name = name
         self.column_type = column_type
         self.nullable = nullable
         self.default = default
+        self.length = length
 
 
     @staticmethod
@@ -95,6 +105,7 @@ class Column:
         column_class,
         nullable: bool = False,
         default = None,
+        length = None,
     ):
         
         if column_class not in PY_COLUMN_TYPES:
@@ -106,6 +117,7 @@ class Column:
             column_type = PY_COLUMN_TYPES[column_class],
             nullable = nullable,
             default = default,
+            length = length,
         )
 
 
@@ -116,10 +128,15 @@ class Column:
         data_type: str,
         is_nullable: str,
         column_default,
+        vector_dimensions = None
     ):
+            
         if data_type not in DB_COLUMN_TYPES:
-            raise InvalidColumnTypeError(f"Unsupported class '{column_class.__name__}' for column '{name}'")
+            raise InvalidColumnTypeError(f"No handler for DB column {column_name} of type {date_type}")
 
+        length = None
+        if data_type == 'vector':
+            length = vector_dimensions
         column_type = DB_COLUMN_TYPES[data_type]
 
         if column_default:
@@ -146,7 +163,6 @@ class Column:
                         column_default += '.000000'
                     column_default = datetime.strptime(column_default, DATE_FMT)
                 except Exception as e:
-                    print(e)
                     pass      
             elif column_type=="UUID":
                 if column_default == 'uuidv7()':
@@ -158,6 +174,11 @@ class Column:
                         pass            
             elif column_type=='VARCHAR':
                 column_default = column_default.rsplit('::character varying', 1)[0].strip("'")
+            elif column_type=='VECTOR':
+                column_default = list(map(
+                    float,
+                    column_default.rsplit('::vector', 1)[0].strip("'[]").split(',')
+                ))
 
         
         return Column(
@@ -166,6 +187,7 @@ class Column:
             column_type = column_type,
             nullable = is_nullable.lower()=='yes',
             default = column_default,
+            length = length
         )
         
 
@@ -227,6 +249,13 @@ class QuerySet:
                 new_qs._limit = key.stop
                 new_qs._skip = None
             return new_qs
+
+
+    def one(self):
+        new_qs = copy.copy(self)
+        new_qs._limit = 1
+        for row in self:
+            return row
 
 
     def order_by(self, *args):

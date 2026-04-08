@@ -1,10 +1,11 @@
 [project]
 name = "idli"
-version = "0.1.0"
-description = "Add your description here"
+version = "0.2.2"
+description = "Nag-free PostgreSQL ORM"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "pgvector>=0.4.2",
     "psycopg-pool>=3.2.8",
     "psycopg[binary]>=3.2.13",
 ]
@@ -13,3 +14,24 @@ dependencies = [
 dev = [
     "python-lsp-server>=1.13.2",
 ]
+
+[project.urls]
+Homepage = "https://github.com/kdqed/idli"
+Issues = "https://github.com/kdqed/idli/issues"
+
+[build-system]
+requires = [
+    "setuptools>=60",
+    "setuptools-scm>=8.0"
+]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+include-package-data = false
+
+[tool.setuptools.packages.find]
+exclude = ["docs*", "brand*", "tinker*"]
+include = ["idli*"]
+
+[tool.setuptools.package-data]
+"*" = ["*.*"]

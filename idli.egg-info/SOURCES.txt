@@ -1,0 +1,16 @@
+.gitignore
+README.md
+pyproject.toml
+uv.lock
+idli/__init__.py
+idli/connection.py
+idli/errors.py
+idli/helpers.py
+idli/internal.py
+idli/model_methods.py
+idli/sql_factory.py
+idli.egg-info/PKG-INFO
+idli.egg-info/SOURCES.txt
+idli.egg-info/dependency_links.txt
+idli.egg-info/requires.txt
+idli.egg-info/top_level.txt

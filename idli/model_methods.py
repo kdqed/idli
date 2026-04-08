@@ -1,20 +1,14 @@
 from idli import sql_factory
 from idli.errors import InvalidValueTypeError
-from idli.helpers import AutoInt, AutoUUID
+from idli.helpers import AutoInt, AutoUUID, _BaseVector
 from idli.internal import PY_COLUMN_TYPES, QuerySet
 
 
-def __init__(self, **kwargs):
-    self.__original__ = {}
-    for key in kwargs:
-        if key in self.__table__.columns:
-            setattr(self, key, kwargs[key])
-
-def save(self):
-    if len(self.__original__.keys()) == 0:
-        self._save_new()
-    else:
-        self._save_existing()
+def count(cls, **kwargs):
+    return list(cls._connection.exec_sql_to_dict_rows(sql_factory.count_by_filter(
+        table_name = cls.__table__.name,
+        filters = kwargs,
+    )))[0]['count']
 
 
 def select(cls, **kwargs):
@@ -34,6 +28,13 @@ def _obj_from_dict(cls, row_dict):
     return obj
 
 
+def __init__(self, **kwargs):
+    self.__original__ = {}
+    for key in kwargs:
+        if key in self.__table__.columns:
+            setattr(self, key, kwargs[key])
+
+
 def _save_existing(self):
     updates = {}
     pk_filter = {}
@@ -42,6 +43,9 @@ def _save_existing(self):
         if hasattr(self, key):
             val = getattr(self, key)
             val_type = type(val)
+            if column.column_type == 'VECTOR':
+                val_type = _BaseVector
+                
             if val is None:
                 if column.nullable:
                     pass
@@ -74,6 +78,9 @@ def _save_new(self):
             val = getattr(self, key)
             if val not in [AutoInt, AutoUUID, None]:
                 val_type = type(val)
+                if column.column_type == 'VECTOR':
+                    val_type = _BaseVector
+                
                 if val_type not in PY_COLUMN_TYPES:
                     raise InvalidValueTypeError(f"Invalid value '{val}' for column '{key}'")
                 if column.column_type != PY_COLUMN_TYPES[val_type]:
@@ -88,3 +95,28 @@ def _save_new(self):
     ))
 
                 
+
+def delete(self):
+    pk = {}
+    for key in self.__class__.__primary_key__:
+        column = self.__table__.columns[key]
+        pk[key] = column.py_to_db(getattr(self, key))
+        
+    self._connection.exec_sql(sql_factory.delete_by_filter(
+        table_name = self.__table__.name,
+        filter = pk,
+    ))
+
+
+def save(self):
+    if len(self.__original__.keys()) == 0:
+        self._save_new()
+    else:
+        self._save_existing()
+
+
+def update(self, **kwargs):
+    for key in kwargs:
+        setattr(self, key, kwargs[key])
+    self.save()
+

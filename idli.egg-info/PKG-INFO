@@ -1,3 +1,15 @@
+Metadata-Version: 2.4
+Name: idli
+Version: 0.2.2
+Summary: Nag-free PostgreSQL ORM
+Project-URL: Homepage, https://github.com/kdqed/idli
+Project-URL: Issues, https://github.com/kdqed/idli/issues
+Requires-Python: >=3.13
+Description-Content-Type: text/markdown
+Requires-Dist: pgvector>=0.4.2
+Requires-Dist: psycopg-pool>=3.2.8
+Requires-Dist: psycopg[binary]>=3.2.13
+
 # Coming Soon: A Python ORM That Treats You Like Its 2026
 
 Alchemy is complex, but Idli is simple.

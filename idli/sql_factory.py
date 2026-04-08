@@ -17,6 +17,41 @@ OPERATORS = dict(
     neq = SQL('{} != {}'),
 )
 
+
+def create_btree_index(table_name: str, columns: List[str], index_name: str):
+    return SQL(' ').join([
+        SQL('CREATE INDEX IF NOT EXISTS {}').format(Identifier(index_name)),
+        SQL('ON {} USING BTREE').format(Identifier(table_name)),
+        SQL('').join([
+            SQL('('),
+            SQL(', ').join(
+                [Identifier(c.strip('-')) + SQL(' ') + SQL('DESC' if c.startswith('-') else 'ASC') for c in columns]
+            ),
+            SQL(')'),
+        ])
+    ])
+
+
+def create_hnsw_index(table_name: str, column: str, operation: str, index_name: str):
+    op_code = {
+        'l2d': 'vector_l2_ops',
+        'l1d': 'vector_l1_ops',
+        'inp': 'vector_ip_ops',
+        'cos': 'vector_cosine_ops',
+    }[operation]
+    return SQL(' ').join([
+        SQL('CREATE INDEX IF NOT EXISTS {}').format(Identifier(index_name)),
+        SQL('ON {} USING HNSW').format(Identifier(table_name)),
+        SQL('').join([
+            SQL('('),
+            Identifier(column),
+            SQL(' '),
+            SQL(op_code),
+            SQL(')'),
+        ])
+    ])
+
+
 def create_primary_key(table_name: str, columns: List[str]):
     return SQL(' ').join([
         SQL('ALTER TABLE {}').format(Identifier(table_name)),
@@ -32,6 +67,8 @@ def create_primary_key(table_name: str, columns: List[str]):
 
 def create_column(column: Column):
     column_type = column.column_type
+    if column_type == 'VECTOR' and column.length:
+        column_type = f'VECTOR({column.length})'
     default = column.default
     if default == AutoInt and column_type == 'INTEGER':
         column_type = 'SERIAL'
@@ -65,6 +102,44 @@ def create_table(table_name: str):
     return SQL('''
         CREATE TABLE IF NOT EXISTS {} ();
     ''').format(Identifier(table_name))
+
+
+def count_by_filter(table_name: str, filters: dict):
+    stmt = [SQL('SELECT COUNT(*) FROM {}').format(
+        Identifier(table_name),
+    )]
+
+    # TODO DRY
+    if (filters is not None) and len(filters):
+        filter_bits = []
+        for key, val in filters.items():
+            if '__' in key:
+                col, op = key.split('__')
+                filter_bits.append(OPERATORS[op].format(Identifier(col), Literal(val)))
+            else:
+                if val is None:
+                    filter_bits.append(SQL('{} IS NULL').format(Identifier(key)))
+                else:
+                    col, op = key, 'eq'
+                    filter_bits.append(OPERATORS[op].format(Identifier(col), Literal(val)))
+            
+                
+        stmt.append(SQL('WHERE ') + SQL(' AND ').join(filter_bits))
+    
+    return SQL(' ').join(stmt)
+
+
+def delete_by_filter(table_name: str, filter: dict):
+    # TODO DRY
+    return SQL(' ').join([
+        SQL('DELETE FROM {}').format(Identifier(table_name)),
+        SQL(' ').join([
+            SQL('WHERE'),
+            SQL(', ').join([
+                SQL('{} = {}').format(Identifier(c), Literal(v)) if v is not None else SQL('{} IS NULL').format(Identifier(c)) for c, v in filter.items()
+            ]),
+        ]),
+    ])
 
 
 def drop_constraint(table_name: str, constraint_name: str):
@@ -109,10 +184,37 @@ def insert_row(table_name: str, columns: List[str], values: List[str]):
 
 def list_columns():
     return SQL("""
-        SELECT table_name, column_name, data_type, is_nullable, column_default
-        FROM information_schema.columns
-        WHERE table_schema = 'public';
+        SELECT 
+            c.table_name, 
+            c.column_name, 
+            -- If it's a vector, name it 'vector'; otherwise, keep the standard name
+            CASE 
+                WHEN c.udt_name = 'vector' THEN 'vector' 
+                ELSE c.data_type 
+            END AS data_type,
+            -- Extract dimensions safely (only if udt_name is vector)
+            CASE 
+                WHEN c.udt_name = 'vector' THEN NULLIF(a.atttypmod, -1)
+                ELSE NULL 
+            END AS vector_dimensions,
+            c.is_nullable, 
+            c.column_default
+        FROM information_schema.columns c
+        JOIN pg_class t ON c.table_name = t.relname
+        JOIN pg_namespace n ON t.relnamespace = n.oid AND c.table_schema = n.nspname
+        JOIN pg_attribute a ON t.oid = a.attrelid AND c.column_name = a.attname
+        WHERE c.table_schema = 'public'
+        ORDER BY c.table_name, c.ordinal_position;
     """)
+
+
+def list_indexes():
+    return SQL('''
+        SELECT schemaname, tablename, indexname, indexdef
+        FROM pg_indexes
+        WHERE schemaname = 'public'
+        ORDER BY tablename, indexname;
+    ''')
 
 
 def list_tables():
@@ -143,25 +245,33 @@ def query_rows(
         Identifier(table_name),
     )]
 
-    if filters is not None:
+    if (filters is not None) and len(filters):
         filter_bits = []
         for key, val in filters.items():
             if '__' in key:
                 col, op = key.split('__')
+                filter_bits.append(OPERATORS[op].format(Identifier(col), Literal(val)))
             else:
-                col, op = key, 'eq'
-            
-            filter_bits.append(OPERATORS[op].format(Identifier(col), Literal(val)))
-                
+                if val is None:
+                    filter_bits.append(SQL('{} IS NULL').format(Identifier(key)))
+                else:
+                    col, op = key, 'eq'
+                    filter_bits.append(OPERATORS[op].format(Identifier(col), Literal(val)))    
         stmt.append(SQL('WHERE ') + SQL(' AND ').join(filter_bits))
     
     if order_by is not None:
         ordering_bits = []
-        for col_name in order_by:
-            if col_name.startswith('-'):
-                ordering_bits.append(SQL('{} DESC').format(Identifier(col_name[1:])))
+        for col in order_by:
+            if type(col) is VNN:
+                ordering_bits.append(SQL(' ').join([
+                    Identifier(col.column),
+                    SQL(col.operator),
+                    Literal(str(list(col.vector))),
+                ]))
+            elif col.startswith('-'):
+                ordering_bits.append(SQL('{} DESC').format(Identifier(col[1:])))
             else:
-                ordering_bits.append(Identifier(col_name))
+                ordering_bits.append(Identifier(col))
         stmt.append(SQL('ORDER BY ') + SQL(',').join(ordering_bits))
 
     if limit is not None:

@@ -1,8 +1,10 @@
 import atexit
 import inspect
 import re
-from typing import Optional, Union, get_args, get_type_hints
+from types import UnionType
+from typing import Optional, Union, get_args, get_origin, get_type_hints
 
+from pgvector.psycopg import register_vector
 import psycopg
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
@@ -11,19 +13,25 @@ from idli import model_methods
 from idli import sql_factory
 from idli.errors import *
 from idli.helpers import *
+from idli.helpers import _BaseVector
 from idli.internal import Column, Table
 
 
 class Connection:
 
-    def __init__(self, db_uri: str, sambar_dip: bool=False):
-        self._pool = ConnectionPool(db_uri, open=True)
+    def __init__(self, db_uri: str, sambar_dip: bool=False, extensions: list=[]):
+        def configure(conn):
+            if 'pgvector' in extensions:
+                register_vector(conn)
+            
+        self._pool = ConnectionPool(db_uri, open=True, configure=configure)
         atexit.register(self._pool.close)
         
         self._sambar_dip = sambar_dip
 
         self.load_tables()
         self.load_columns()
+        self.load_indexes()
         
 
     def exec_sql(self, *args):
@@ -48,7 +56,12 @@ class Connection:
             table_name = row['table_name']
             if table_name in self.__db_tables__:
                 self.__db_tables__[table_name].add_column(Column.from_db_row(**row))
-        
+
+
+    def load_indexes(self):
+        result = self.exec_sql_to_dict_rows(sql_factory.list_indexes()).fetchall()
+        self.__db_indexes__ = { row['indexname']: row for row in result }
+    
 
     def _ensure_table(self, cls):
         if cls.__table__.name not in self.__db_tables__:
@@ -82,13 +95,18 @@ class Connection:
                 nullable = False
             
             default = getattr(cls, key, None)
+            length = None
+            if issubclass(col_class, _BaseVector):
+                length = col_class.dimensions
+                col_class = _BaseVector
                 
             cls.__table__.add_column(Column.from_py_model(
                 table_name = cls.__table__.name,
                 name = col_name, 
                 column_class = col_class, 
                 nullable = nullable,
-                default = default, 
+                default = default,
+                length = length,
             ))
 
 
@@ -124,10 +142,15 @@ class Connection:
     def _handle_directives(self, cls):
         directives = getattr(cls, '__idli__', [])
         cls.__primary_key__ = ['id']
+        cls.__indexes__ = {}
 
         for d in directives:
             if type(d) is PrimaryKey:
                 cls.__primary_key__ = d.columns
+            if type(d) is BTreeIndex:
+                cls.__indexes__[f'{cls.__table__.name}_{d.name_hash}'] = d
+            if type(d) is HNSWIndex:
+                cls.__indexes__[f'{cls.__table__.name}_{d.name_hash}'] = d    
 
 
     def _reconcile_primary_key(self, cls):
@@ -170,6 +193,26 @@ class Connection:
                 table_name = cls.__table__.name,
                 columns = defined_pk_columns,
             ))
+
+
+    def _reconcile_indexes(self, cls):
+        for name, idx in cls.__indexes__.items():
+            if name in self.__db_indexes__:
+                continue
+            if type(idx) is BTreeIndex:
+                self.exec_sql(sql_factory.create_btree_index(
+                    table_name = cls.__table__.name,
+                    columns = idx.columns,
+                    index_name = name,
+                ))
+            if type(idx) is HNSWIndex:
+                self.exec_sql(sql_factory.create_hnsw_index(
+                    table_name = cls.__table__.name,
+                    column = idx.column,
+                    operation = idx.operation,
+                    index_name = name,
+                ))
+            
     
     
     def Model(self, cls):
@@ -182,14 +225,18 @@ class Connection:
         self._reconcile_columns(cls)
         self._handle_directives(cls)
         self._reconcile_primary_key(cls)
+        self._reconcile_indexes(cls)
 
         cls._connection = self
         cls.__init__ = model_methods.__init__
-        cls.save = model_methods.save
         cls._save_existing = model_methods._save_existing
         cls._save_new = model_methods._save_new
+        cls.delete = model_methods.delete
+        cls.save = model_methods.save
+        cls.update = model_methods.update
 
-        cls.select = classmethod(model_methods.select)
         cls._obj_from_dict = classmethod(model_methods._obj_from_dict)
+        cls.count = classmethod(model_methods.count)
+        cls.select = classmethod(model_methods.select)
         
         return cls
