@@ -40,7 +40,6 @@ class Connection:
             
     
     def exec_sql_to_dict_rows(self, *args):
-        print(args)
         with self._pool.connection() as conn:
             cur = conn.cursor(row_factory = dict_row)
             return cur.execute(*args)
