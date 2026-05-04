@@ -25,6 +25,9 @@ def _obj_from_dict(cls, row_dict):
         )
         setattr(obj, column_name, value)
         obj.__original__[column_name] = value
+    for column_name in row_dict.keys():
+        if '__vd__' in column_name:
+            setattr(obj, column_name, row_dict[column_name])
     return obj
 
 

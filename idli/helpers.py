@@ -59,30 +59,31 @@ class _BaseVector(list):
 
 class VNN:
 
-    def __init__(self, column, operator, vector):
+    def __init__(self, column, operator, op_name, vector):
         self.column = column
         self.operator = operator
+        self.op_name = op_name
         self.vector = vector
 
 
     @classmethod
     def l2d(cls, column, vector):
-        return cls(column=column, operator='<->', vector=vector)
+        return cls(column=column, operator='<->', op_name='l2d', vector=vector)
 
 
     @classmethod
     def inp(cls, column, vector):
-        return cls(column=column, operator='<#>', vector=vector)
+        return cls(column=column, operator='<#>', op_name='inp', vector=vector)
 
 
     @classmethod
     def cos(cls, column, vector):
-        return cls(column=column, operator='<=>', vector=vector)
+        return cls(column=column, operator='<=>', op_name='cos', vector=vector)
 
 
     @classmethod
     def l1d(cls, column, vector):
-        return cls(column=column, operator='<+>', vector=vector)
+        return cls(column=column, operator='<+>', op_name='l1d', vector=vector)
     
 
 def Vector(dimensions: int):

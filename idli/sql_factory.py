@@ -241,12 +241,11 @@ def query_rows(
         order_by: List | None = None,
     ):
     
-    stmt = [SQL('SELECT * FROM {}').format(
-        Identifier(table_name),
-    )]
+    select_bits = [SQL('*')]
+    filter_bits = []
+    ordering_bits = []
 
     if (filters is not None) and len(filters):
-        filter_bits = []
         for key, val in filters.items():
             if '__' in key:
                 col, op = key.split('__')
@@ -256,13 +255,18 @@ def query_rows(
                     filter_bits.append(SQL('{} IS NULL').format(Identifier(key)))
                 else:
                     col, op = key, 'eq'
-                    filter_bits.append(OPERATORS[op].format(Identifier(col), Literal(val)))    
-        stmt.append(SQL('WHERE ') + SQL(' AND ').join(filter_bits))
+                    filter_bits.append(OPERATORS[op].format(Identifier(col), Literal(val)))
     
     if order_by is not None:
-        ordering_bits = []
         for col in order_by:
             if type(col) is VNN:
+                select_bits.append(SQL(' ').join([
+                    Identifier(col.column),
+                    SQL(col.operator),
+                    Literal(str(list(col.vector))),
+                    SQL('AS'),
+                    Identifier(col.column + '__vd__' + col.op_name)
+                ]))
                 ordering_bits.append(SQL(' ').join([
                     Identifier(col.column),
                     SQL(col.operator),
@@ -272,6 +276,14 @@ def query_rows(
                 ordering_bits.append(SQL('{} DESC').format(Identifier(col[1:])))
             else:
                 ordering_bits.append(Identifier(col))
+    
+    stmt = []
+    
+    from_bit = SQL(' FROM {}').format(Identifier(table_name))
+    stmt.append(SQL('SELECT ') + SQL(',').join(select_bits) + from_bit)
+    if (filters is not None) and len(filters):
+        stmt.append(SQL('WHERE ') + SQL(' AND ').join(filter_bits))
+    if order_by is not None:
         stmt.append(SQL('ORDER BY ') + SQL(',').join(ordering_bits))
 
     if limit is not None:
