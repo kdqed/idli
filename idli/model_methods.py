@@ -15,7 +15,7 @@ def select(cls, **kwargs):
     return QuerySet(cls, filters=kwargs)
 
 
-def _obj_from_dict(cls, row_dict):
+def _obj_from_dict(cls, row_dict, partial=False):
     obj = cls()
     obj.__original__ = {}
     for column_name in cls.__table__.columns:
@@ -28,6 +28,9 @@ def _obj_from_dict(cls, row_dict):
     for column_name in row_dict.keys():
         if '__vd__' in column_name:
             setattr(obj, column_name, row_dict[column_name])
+    
+    if partial:
+        obj.__is_partial__ = True
     return obj
 
 
@@ -114,6 +117,8 @@ def delete(self):
 def save(self):
     if len(self.__original__.keys()) == 0:
         self._save_new()
+    elif self.__is_partial__:
+        raise Exception('Cannot Save Partially Loaded Object')
     else:
         self._save_existing()
 

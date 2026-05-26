@@ -1,6 +1,6 @@
 from typing import List
 
-from psycopg.sql import Identifier, Literal, SQL
+from psycopg.sql import Composed, Identifier, Literal, SQL
 
 from idli.helpers import *
 from idli.internal import Column, Table
@@ -14,8 +14,88 @@ OPERATORS = dict(
     gte = SQL('{} >= {}'),
     lt = SQL('{} < {}'),
     lte = SQL('{} <= {}'),
-    neq = SQL('{} != {}'),
+    neq = SQL('{} IS DISTINCT FROM {}'),
 )
+
+
+def _exists_bit_for_join(
+    table_name: str,
+    col_name: str,
+    related_table_name: str,
+    related_col_name: str,
+    filters: dict | None,
+    ):
+  
+    sql_bits = []
+    
+    sql_bits.append(SQL('EXISTS ( '))
+    sql_bits.append(SQL("SELECT 1 FROM {}").format(Identifier(
+        related_table_name
+    )))
+  
+    filter_bits = []
+    filter_bits.append(SQL('{}.{} = {}.{}').format(
+        Identifier(related_table_name),
+        Identifier(related_col_name),
+        Identifier(table_name),
+        Identifier(col_name),
+    ))
+           
+    for key, val in filters.items():
+        if '__' in key:
+            col, op = key.split('__')
+            if val is None and op == 'eq':
+                filter_bits.append(SQL('{} IS NULL').format(Identifier(col)))
+            elif val is None and op == 'neq':
+                filter_bits.append(SQL('{} IS NOT NULL').format(Identifier(col)))
+            else:
+                filter_bits.append(OPERATORS[op].format(Identifier(col), Literal(val)))
+        else:
+            if val is None:
+                filter_bits.append(SQL('{} IS NULL').format(Identifier(key)))
+            else:
+                col, op = key, 'eq'
+                filter_bits.append(OPERATORS[op].format(
+                    Identifier(related_table_name, col), Literal(val)
+                ))
+    
+    sql_bits.append(SQL('WHERE ') + SQL(' AND ').join(filter_bits))
+    sql_bits.append(SQL(' )'))
+    
+    return Composed(sql_bits)
+
+
+def _filters_to_sql(filters: dict, table_name: str | None):
+    filter_bits = []
+           
+    for key, val in filters.items():
+        if key == '__by_join':
+            for ef in val:
+                filter_bits.append(_exists_bit_for_join(
+                    table_name = table_name,
+                    col_name = ef[2],
+                    related_table_name = ef[0].__table__.name,
+                    related_col_name = ef[1],
+                    filters = ef[3],
+                ))
+        elif '__' in key:
+            col, op = key.split('__')
+            if val is None and op == 'eq':
+                filter_bits.append(SQL('{} IS NULL').format(Identifier(col)))
+            elif val is None and op == 'neq':
+                filter_bits.append(SQL('{} IS NOT NULL').format(Identifier(col)))
+            else:
+                filter_bits.append(OPERATORS[op].format(Identifier(col), Literal(val)))
+        else:
+            if val is None:
+                filter_bits.append(SQL('{} IS NULL').format(Identifier(key)))
+            else:
+                col, op = key, 'eq'
+                filter_bits.append(OPERATORS[op].format(
+                    Identifier(col), Literal(val)
+                ))
+    
+    return SQL('WHERE ') + SQL(' AND ').join(filter_bits)
 
 
 def create_btree_index(table_name: str, columns: List[str], index_name: str):
@@ -109,36 +189,16 @@ def count_by_filter(table_name: str, filters: dict):
         Identifier(table_name),
     )]
 
-    # TODO DRY
     if (filters is not None) and len(filters):
-        filter_bits = []
-        for key, val in filters.items():
-            if '__' in key:
-                col, op = key.split('__')
-                filter_bits.append(OPERATORS[op].format(Identifier(col), Literal(val)))
-            else:
-                if val is None:
-                    filter_bits.append(SQL('{} IS NULL').format(Identifier(key)))
-                else:
-                    col, op = key, 'eq'
-                    filter_bits.append(OPERATORS[op].format(Identifier(col), Literal(val)))
-            
-                
-        stmt.append(SQL('WHERE ') + SQL(' AND ').join(filter_bits))
+        stmt.append(_filters_to_sql(filters))
     
     return SQL(' ').join(stmt)
 
 
 def delete_by_filter(table_name: str, filter: dict):
-    # TODO DRY
     return SQL(' ').join([
         SQL('DELETE FROM {}').format(Identifier(table_name)),
-        SQL(' ').join([
-            SQL('WHERE'),
-            SQL(', ').join([
-                SQL('{} = {}').format(Identifier(c), Literal(v)) if v is not None else SQL('{} IS NULL').format(Identifier(c)) for c, v in filter.items()
-            ]),
-        ]),
+        _filters_to_sql(filter),
     ])
 
 
@@ -239,23 +299,18 @@ def query_rows(
         limit: int | None = None,
         skip: int | None = None,
         order_by: List | None = None,
+        columns: List | None = None,
     ):
     
     select_bits = [SQL('*')]
-    filter_bits = []
+    if columns:
+        select_bits = [SQL(col_name) for col_name in columns]
+    
+    filter_sql = None
     ordering_bits = []
 
     if (filters is not None) and len(filters):
-        for key, val in filters.items():
-            if '__' in key:
-                col, op = key.split('__')
-                filter_bits.append(OPERATORS[op].format(Identifier(col), Literal(val)))
-            else:
-                if val is None:
-                    filter_bits.append(SQL('{} IS NULL').format(Identifier(key)))
-                else:
-                    col, op = key, 'eq'
-                    filter_bits.append(OPERATORS[op].format(Identifier(col), Literal(val)))
+        filter_sql = _filters_to_sql(filters, table_name = table_name)
     
     if order_by is not None:
         for col in order_by:
@@ -281,8 +336,8 @@ def query_rows(
     
     from_bit = SQL(' FROM {}').format(Identifier(table_name))
     stmt.append(SQL('SELECT ') + SQL(',').join(select_bits) + from_bit)
-    if (filters is not None) and len(filters):
-        stmt.append(SQL('WHERE ') + SQL(' AND ').join(filter_bits))
+    if filter_sql is not None:
+        stmt.append(filter_sql)
     if order_by is not None:
         stmt.append(SQL('ORDER BY ') + SQL(',').join(ordering_bits))
 

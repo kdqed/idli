@@ -213,6 +213,7 @@ class QuerySet:
         limit: int | None = None,
         skip: int | None = None,
         order_by: List | None = None,
+        columns: List | None = None,
     ):
         self._cls = cls
         self._filters = filters
@@ -220,6 +221,7 @@ class QuerySet:
         self._limit = limit
         self._skip = skip
         self._order_by = order_by
+        self._columns = columns
 
 
     def __iter__(self):
@@ -230,6 +232,7 @@ class QuerySet:
                 limit = self._limit,
                 skip = self._skip,
                 order_by = self._order_by,
+                columns = self._columns,
             )
         )
         for row in self._cursor:
@@ -250,7 +253,6 @@ class QuerySet:
                 new_qs._skip = None
             return new_qs
 
-
     def one(self):
         new_qs = copy.copy(self)
         new_qs._limit = 1
@@ -262,6 +264,13 @@ class QuerySet:
         new_qs = copy.copy(self)
         if len(args)>0:
             new_qs._order_by = args
+        return new_qs
+    
+    
+    def only(self, *args):
+        new_qs = copy.copy(self)
+        if len(args)>0:
+            new_qs._columns = args
         return new_qs
 
 
