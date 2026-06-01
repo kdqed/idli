@@ -29,8 +29,7 @@ def _obj_from_dict(cls, row_dict, partial=False):
         if '__vd__' in column_name:
             setattr(obj, column_name, row_dict[column_name])
     
-    if partial:
-        obj.__is_partial__ = True
+    obj.__is_partial__ = bool(partial)
     return obj
 
 
