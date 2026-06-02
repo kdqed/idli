@@ -190,7 +190,7 @@ def count_by_filter(table_name: str, filters: dict):
     )]
 
     if (filters is not None) and len(filters):
-        stmt.append(_filters_to_sql(filters))
+        stmt.append(_filters_to_sql(filters, table_name = table_name))
     
     return SQL(' ').join(stmt)
 
@@ -198,7 +198,7 @@ def count_by_filter(table_name: str, filters: dict):
 def delete_by_filter(table_name: str, filter: dict):
     return SQL(' ').join([
         SQL('DELETE FROM {}').format(Identifier(table_name)),
-        _filters_to_sql(filter),
+        _filters_to_sql(filter, table_name = table_name),
     ])
 
 

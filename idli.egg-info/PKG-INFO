@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: idli
-Version: 0.2.5
+Version: 0.2.6
 Summary: Nag-free PostgreSQL ORM
 Project-URL: Homepage, https://github.com/kdqed/idli
 Project-URL: Issues, https://github.com/kdqed/idli/issues
